@@ -105,7 +105,7 @@ def create_entity_block(parent_frame, entity_name, entity_block,enum_names):
     ttk.Label(id_row_frame, text="ID Name:").pack(side="left", padx=10, pady=5)
     id_name_entry = ttk.Entry(id_row_frame, width=15)
     id_name_entry.pack(side="left", padx=10, pady=5)
-    id_name_entry.insert(0, "id")  # Set a default value for ID name
+    id_name_entry.insert(0, f"id{entity_name}")  # Set a default value for ID name
     type_id_var = tk.StringVar()
 
     # ID Type Label and Combobox
@@ -156,6 +156,7 @@ def add_attribute_block(entity_frame, entity_block,enum_names):
 
     # Attribute object
     attribute = {"name": name_entry, "type": type_var}
+    print(type(attribute))
     entity_block["attributes"].append(attribute)
 
 def remove_entity(entity_frame, entity_block,id_row_frame):

@@ -1,6 +1,7 @@
 from tkinter import  messagebox
 import os
 from jointure_logic import generate_jointure, get_jointure
+import re
 
 
 ENUM_TEMPLATE = """package {package_path}.entity;
@@ -44,7 +45,7 @@ import lombok.AllArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import {package_path}.entity.{entity_name};
 import {package_path}.service.{entity_name}Service;
-
+{affect_controllers_entity}
 import java.util.List;
 
 @Tag(name = "Gestion {entity_name}")
@@ -83,6 +84,8 @@ public class {entity_name}Controller {{
     public {entity_name} retrieve{entity_name}(@PathVariable("id") {id_class_type} id) {{
         return service.retrieve{entity_name}(id);
     }}
+
+    {affect_functions}
 }}"""
 
 REPOSITORY_TEMPLATE = """package {package_path}.repository;
@@ -102,43 +105,48 @@ import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import {package_path}.entity.{entity_name};
 import {package_path}.repository.{entity_name}Repository;
+{affect_imports}
 
 import java.util.List;
 
 @Service
 @AllArgsConstructor
 public class {entity_name}Service implements I{entity_name}Service {{
-    private {entity_name}Repository repo;
+    private {entity_name}Repository {entity_name_lower}Repo;
+    {affect_repos}
 
     @Override
     public {entity_name} add{entity_name}({entity_name} {entity_name_lower}) {{
-        return repo.save({entity_name_lower});
+        return {entity_name_lower}Repo.save({entity_name_lower});
     }}
 
     @Override
     public {entity_name} modify{entity_name}({entity_name} {entity_name_lower}) {{
-        return repo.save({entity_name_lower});
+        return {entity_name_lower}Repo.save({entity_name_lower});
     }}
 
     @Override
     public void remove{entity_name}({id_class_type} id) {{
-        repo.deleteById(id);
+        {entity_name_lower}Repo.deleteById(id);
     }}
 
     @Override
     public {entity_name} retrieve{entity_name}({id_class_type} id) {{
-        return repo.findById(id).orElse(null);
+        return {entity_name_lower}Repo.findById(id).orElse(null);
     }}
 
     @Override
     public List<{entity_name}> retrieveAll{entity_name}s() {{
-        return repo.findAll();
+        return {entity_name_lower}Repo.findAll();
     }}
+
+    {affect_services}
 }}"""
 
 ISERVICE_TEMPLATE = """package {package_path}.service;
 
 import {package_path}.entity.{entity_name};
+
 
 import java.util.List;
 
@@ -148,6 +156,8 @@ public interface I{entity_name}Service {{
     {entity_name} add{entity_name}({entity_name} {entity_name_lower});
     void remove{entity_name}({id_class_type} id);
     {entity_name} modify{entity_name}({entity_name} {entity_name_lower});
+
+    
 }}"""
 
 
@@ -160,19 +170,23 @@ def extract_package_path(project_path):
 
 
 
+
+
+
 def generate_entities(self,project_path):
     """Generate entity files based on the collected entities."""
 
-    generated_join =  generate_jointure(self.join_blocks)
+    generated_join =  generate_jointure(self.join_blocks , extract_package_path(project_path))
     
 
     for entity in self.entities:
         entity_name = entity["name"]
         fields_content = ""
-
+       
         # Generate entity fields
         for attr in entity["attributes"]:
             attr_name = attr["name"].get()
+            
             attr_type = attr["type"].get()
             if attr_type == "Date":
                 fields_content += f"    @Temporal(TemporalType.DATE)\n    private {attr_type} {attr_name};\n"
@@ -182,7 +196,7 @@ def generate_entities(self,project_path):
         selected_id_type = entity["id_type_combobox"].get()
         id_class_type = "String" if selected_id_type in ["UUID", "AUTO"] else "Long"
 
-        code_for_jointure = get_jointure(entity_name,generated_join)
+        jointure_details = get_jointure(entity_name, generated_join)
 
 
         # Generate files
@@ -195,14 +209,19 @@ def generate_entities(self,project_path):
         ]:
             file_content = template.format(
                 package_path=extract_package_path(project_path),
-                jointure=code_for_jointure,
+                jointure=jointure_details["jointure"],
                 entity_name=entity_name,
-                entity_name_lower=entity_name.lower(),
+                entity_name_lower=first_char_lower(entity_name),
                 id_class_type=id_class_type,
                 id_type=selected_id_type,
                 id_name=entity["id_name_entry"].get(),
                 fields=fields_content,
                 id=r"{id}",  # Add the missing `id` placeholder
+                affect_functions=jointure_details["functions"],
+                affect_imports=jointure_details["imports"],
+                affect_services=jointure_details["services"],
+                affect_repos=jointure_details["repos"],
+                affect_controllers_entity=extract_entity_imports(jointure_details["imports"]),
 
             )
             file_path = os.path.join(project_path, f"{folder}/{file_suffix}")
@@ -244,3 +263,15 @@ def generate_enum(self, project_path):
             enum_file.write(enum_content)
 
     messagebox.showinfo("Success", "Enum files generated successfully!")
+
+def first_char_lower(s: str) -> str:
+    return s[0].lower() + s[1:] if s else s
+
+
+def extract_entity_imports(imports: str) -> str:
+    # Regex pattern to match imports that contain ".entity." with "import" included, optionally without a semicolon
+    pattern = r"(import\s+[^\s]+\.entity\.[^\s]+);?"
+    entity_imports = re.findall(pattern, imports)
+    
+    # Ensure each import ends with a single semicolon
+    return "\n".join([f"{import_stmt};" if not import_stmt.endswith(';') else import_stmt for import_stmt in entity_imports]) if entity_imports else ""
